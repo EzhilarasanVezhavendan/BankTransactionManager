@@ -1,3 +1,4 @@
+package jdbc23;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -5,7 +6,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.util.Scanner;
-
 public class Rollback_Transaction_bank_app {
     public static void main(String[] args) {
         String url = "jdbc:mysql://localhost:3306/jdbc";
@@ -21,6 +21,7 @@ public class Rollback_Transaction_bank_app {
         ResultSet res1 = null;
         ResultSet res2 = null;
         Savepoint s = null;
+
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
             con = DriverManager.getConnection(url, un, pwd);
@@ -30,54 +31,85 @@ public class Rollback_Transaction_bank_app {
             int acc_no = scan.nextInt();
             System.out.println("Enter Pin:");
             int pin = scan.nextInt();
+
             pstmt1 = con.prepareStatement("select * from account where acc_no = ? and pin = ?");
             pstmt1.setInt(1, acc_no);
             pstmt1.setInt(2, pin);
             res1 = pstmt1.executeQuery();
-            res1.next();
+
+            if (!res1.next()) {
+                System.out.println("Invalid account number or PIN.");
+                return;
+            }
+
             String acc_name = res1.getString(2);
             int balance = res1.getInt(4);
             System.out.println("Welcome " + acc_name);
-            System.out.println("Available balance is: " + balance)
+            System.out.println("Available balance is: " + balance);
+
             con.setAutoCommit(false);
             s = con.setSavepoint();
             System.out.println("<---Transfer Details--->");
             System.out.println("Enter the beneficiary account number:");
             int acc_nu = scan.nextInt();
-            System.out.println("Enter the transfer amount");
+            System.out.println("Enter the transfer amount:");
             int t_amount = scan.nextInt();
+
+            // Debit from the sender's account
             pstmt2 = con.prepareStatement("update account set balance = balance - ? where acc_no = ?");
             pstmt2.setInt(1, t_amount);
-            pstmt2.setInt(2, acc_nu);
-            pstmt2.executeUpdate();
+            pstmt2.setInt(2, acc_no);
+            int rowsAffected = pstmt2.executeUpdate();
+
+            if (rowsAffected == 0) {
+                System.out.println("Failed to debit amount from your account. Transaction aborted.");
+                con.rollback(s);
+                return;
+            }
+
+            // Credit to the beneficiary's account
+            pstmt3 = con.prepareStatement("update account set balance = balance + ? where acc_no = ?");
+            pstmt3.setInt(1, t_amount);
+            pstmt3.setInt(2, acc_nu);
+            rowsAffected = pstmt3.executeUpdate();
+
+            if (rowsAffected == 0) {
+                System.out.println("Failed to credit amount to beneficiary's account. Rolling back transaction.");
+                con.rollback(s);
+                return;
+            }
+
+            // Confirm the transfer
             System.out.println("<--- Incoming Credit Request --->");
-            System.out.println(acc_name + " account no " + acc_no + " wants Transfer " + t_amount);
-            System.out.println("Press yes to receive");
+            System.out.println("Account no " + acc_nu + " wants to receive " + t_amount);
+            System.out.println("Press yes to confirm");
             System.out.println("Press no to reject");
             String choice = scan.next();
+
             if (choice.equals("yes")) {
-                pstmt3 = con.prepareStatement("update account set balance = balance + ? where acc_no = ?");
-                pstmt3.setInt(1, t_amount);
-                pstmt3.setInt(2, acc_no);
-                pstmt3.executeUpdate();
-                pstmt4 = con.prepareStatement("select * from account where acc_no = ?");
-                pstmt4.setInt(1, acc_no);
-                res2 = pstmt4.executeQuery();
-                res2.next();
-                System.out.println("Updated balance is: " + res2.getInt(4));
+                con.commit();
+                System.out.println("Transaction successful!");
             } else {
                 con.rollback(s);
-                pstmt5 = con.prepareStatement("select * from account where acc_no= ?");
-                pstmt5.setInt(1, acc_nu);
-                res2 = pstmt5.executeQuery();
-                res2.next();
-                System.out.println("Existing balance is: " + res2.getInt(4));
+                System.out.println("Transaction rejected. Rolling back changes.");
             }
-            con.commit();
-        } catch (SQLException | ClassNotFoundException sq) {
+
+            pstmt4 = con.prepareStatement("select * from account where acc_no = ?");
+            pstmt4.setInt(1, acc_no);
+            res2 = pstmt4.executeQuery();
+            if (res2.next()) {
+                System.out.println("Updated balance is: " + res2.getInt(4));
+            }
+
+        } catch (SQLException sq) {
+            System.out.println("Database error: " + sq.getMessage());
             sq.printStackTrace();
+        } catch (ClassNotFoundException cnf) {
+            System.out.println("Driver not found: " + cnf.getMessage());
+            cnf.printStackTrace();
         } catch (Exception e) {
-            System.out.println("SORRY Something Went Wrong!!!1");
+            System.out.println("SORRY Something Went Wrong: " + e.getMessage());
+            e.printStackTrace();
         } finally {
             try {
                 if (con != null) con.close();
