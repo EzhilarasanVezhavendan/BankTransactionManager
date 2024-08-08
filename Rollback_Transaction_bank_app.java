@@ -1,4 +1,6 @@
 package jdbc23;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -6,6 +8,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.util.Scanner;
+
 public class Rollback_Transaction_bank_app {
     public static void main(String[] args) {
         String url = "jdbc:mysql://localhost:3306/jdbc";
@@ -32,9 +35,12 @@ public class Rollback_Transaction_bank_app {
             System.out.println("Enter Pin:");
             int pin = scan.nextInt();
 
+            // Hash the entered PIN
+            String hashedPin = hashMD5(String.valueOf(pin));
+
             pstmt1 = con.prepareStatement("select * from account where acc_no = ? and pin = ?");
             pstmt1.setInt(1, acc_no);
-            pstmt1.setInt(2, pin);
+            pstmt1.setString(2, hashedPin);
             res1 = pstmt1.executeQuery();
 
             if (!res1.next()) {
@@ -107,6 +113,9 @@ public class Rollback_Transaction_bank_app {
         } catch (ClassNotFoundException cnf) {
             System.out.println("Driver not found: " + cnf.getMessage());
             cnf.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            System.out.println("Error hashing PIN: " + e.getMessage());
+            e.printStackTrace();
         } catch (Exception e) {
             System.out.println("SORRY Something Went Wrong: " + e.getMessage());
             e.printStackTrace();
@@ -127,5 +136,17 @@ public class Rollback_Transaction_bank_app {
                 mm.printStackTrace();
             }
         }
+    }
+
+    // Method to hash a string using MD5
+    private static String hashMD5(String input) throws NoSuchAlgorithmException {
+        MessageDigest md = MessageDigest.getInstance("MD5");
+        md.update(input.getBytes());
+        byte[] bytes = md.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 }
